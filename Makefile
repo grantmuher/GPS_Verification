@@ -3,7 +3,7 @@
 # ------------------------------------------------
 
 # Target file name (Output will be firmware.elf / firmware.bin)
-TARGET = firmware
+TARGET = GPS_Verification
 
 # Build path
 BUILD_DIR = build
@@ -41,7 +41,30 @@ Drivers/STM32H5xx_HAL_Driver/Src/stm32h5xx_hal_gpio.c \
 Drivers/STM32H5xx_HAL_Driver/Src/stm32h5xx_hal_uart.c \
 Drivers/STM32H5xx_HAL_Driver/Src/stm32h5xx_hal_uart_ex.c \
 Drivers/STM32H5xx_HAL_Driver/Src/stm32h5xx_hal_rcc.c \
-Drivers/STM32H5xx_HAL_Driver/Src/stm32h5xx_hal_rcc_ex.c
+Drivers/STM32H5xx_HAL_Driver/Src/stm32h5xx_hal_rcc_ex.c \
+Core/Src/stm32h5xx_hal_msp.c \
+Drivers/STM32H5xx_HAL_Driver/Src/stm32h5xx_hal_flash.c \
+Drivers/STM32H5xx_HAL_Driver/Src/stm32h5xx_hal_flash_ex.c \
+Drivers/STM32H5xx_HAL_Driver/Src/stm32h5xx_hal_dma.c \
+Drivers/STM32H5xx_HAL_Driver/Src/stm32h5xx_hal_dma_ex.c \
+Drivers/STM32H5xx_HAL_Driver/Src/stm32h5xx_hal_pwr.c \
+Drivers/STM32H5xx_HAL_Driver/Src/stm32h5xx_hal_pwr_ex.c \
+Drivers/STM32H5xx_HAL_Driver/Src/stm32h5xx_hal_exti.c \
+Drivers/STM32H5xx_HAL_Driver/Src/stm32h5xx_hal_eth.c \
+Drivers/STM32H5xx_HAL_Driver/Src/stm32h5xx_hal_eth_ex.c \
+Drivers/STM32H5xx_HAL_Driver/Src/stm32h5xx_hal_fdcan.c \
+Drivers/STM32H5xx_HAL_Driver/Src/stm32h5xx_hal_i2c.c \
+Drivers/STM32H5xx_HAL_Driver/Src/stm32h5xx_hal_i2c_ex.c \
+Drivers/STM32H5xx_HAL_Driver/Src/stm32h5xx_hal_icache.c \
+Drivers/STM32H5xx_HAL_Driver/Src/stm32h5xx_ll_sdmmc.c \
+Drivers/STM32H5xx_HAL_Driver/Src/stm32h5xx_ll_dlyb.c \
+Drivers/STM32H5xx_HAL_Driver/Src/stm32h5xx_hal_sd.c \
+Drivers/STM32H5xx_HAL_Driver/Src/stm32h5xx_hal_sd_ex.c \
+Drivers/STM32H5xx_HAL_Driver/Src/stm32h5xx_hal_mmc.c \
+Drivers/STM32H5xx_HAL_Driver/Src/stm32h5xx_hal_mmc_ex.c \
+Drivers/STM32H5xx_HAL_Driver/Src/stm32h5xx_hal_sdio.c \
+Core/Src/sysmem.c \
+Core/Src/syscalls.c
 
 # Assembly Startup File
 ASM_SOURCES =  \
