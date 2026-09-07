@@ -135,6 +135,7 @@ int main(void)
 
 
   bool gpsValid = false;
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -151,34 +152,58 @@ int main(void)
     while (readIndex != writeIndex) {
     
       // Grab one new byte
-        char c = rxBuffer[readIndex];
+      char c = rxBuffer[readIndex];
         
-        // Move our read pointer forward, wrapping back to 0 if we hit the end
-        readIndex++;
-        if (readIndex >= 512) {
-            readIndex = 0;
+      // Move our read pointer forward, wrapping back to 0 if we hit the end
+      readIndex++;
+      if (readIndex >= 512) {
+        readIndex = 0;
+      }
+    
+      // 3. Add the character to our temporary line buffer
+      if (lineIndex < sizeof(lineBuffer) - 1) {
+        lineBuffer[lineIndex++] = c;
+      }
+    
+      // 4. If we hit the newline, the sentence is complete!
+      if (c == '\n') {
+        lineBuffer[lineIndex] = '\0'; // Add standard C string terminator
+        
+        if (strncmp(lineBuffer, "$GPGGA", 6) == 0) {
+          int current_comma_count = 0;
+          char* p = lineBuffer;
+          while (*p != '\0') {
+            if (*p == ',') {
+              current_comma_count++;
+            }
+
+            if (current_comma_count == 6) {
+              if (*(p + 1) != '0') {
+                gpsValid = true;
+              } else {
+                gpsValid = false;
+              }
+              break; 
+            }
+            p++;
+          }
+
+          
         }
         
-        // 3. Add the character to our temporary line buffer
-        if (lineIndex < sizeof(lineBuffer) - 1) {
-            lineBuffer[lineIndex++] = c;
-        }
-        
-        // 4. If we hit the newline, the sentence is complete!
-        if (c == '\n') {
-            lineBuffer[lineIndex] = '\0'; // Add standard C string terminator
-            
-            // Now you safely have a full string. Call your parser!
-            ParseGPS(lineBuffer); 
-            
-            // Reset the line builder for the next sentence
-            lineIndex = 0; 
-        }
+        // Reset the line builder for the next sentence
+        lineIndex = 0; 
+      }
     }
 
-/* USER CODE END WHILE */
+    if (gpsValid) {
+      HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_SET);
+    } else {
+      HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_RESET);
+    }
+  /* USER CODE END WHILE */
 
-    /* USER CODE BEGIN 3 */
+  /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
 }
