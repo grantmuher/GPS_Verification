@@ -22,6 +22,8 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include <stdint.h>
+#include <stdbool.h>
 
 /* USER CODE END Includes */
 
@@ -121,14 +123,60 @@ int main(void)
   MX_SDMMC1_SD_Init();
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
+  // receive GPS data over UART 
+  uint8_t rxBuffer[512]; // Large enough to hold a few GPS sentences
+  char lineBuffer[120];          // Temporary buffer for a single complete sentence
 
+  uint16_t readIndex = 0;
+  uint16_t lineIndex = 0;
+
+  // Start receiving in the background
+  HAL_UART_Receive_DMA(&huart1, rxBuffer, sizeof(rxBuffer));
+
+
+  bool gpsValid = false;
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-    /* USER CODE END WHILE */
+
+    // check 
+    // 1. Calculate the exact index where the DMA is currently writing
+    // __HAL_DMA_GET_COUNTER returns how many bytes are LEFT to write in the buffer
+    uint16_t writeIndex = 512 - __HAL_DMA_GET_COUNTER(&hdma_usart1_rx);
+    
+    // 2. Loop only if there are new unread bytes
+    while (readIndex != writeIndex) {
+    
+      // Grab one new byte
+        char c = rxBuffer[readIndex];
+        
+        // Move our read pointer forward, wrapping back to 0 if we hit the end
+        readIndex++;
+        if (readIndex >= 512) {
+            readIndex = 0;
+        }
+        
+        // 3. Add the character to our temporary line buffer
+        if (lineIndex < sizeof(lineBuffer) - 1) {
+            lineBuffer[lineIndex++] = c;
+        }
+        
+        // 4. If we hit the newline, the sentence is complete!
+        if (c == '\n') {
+            lineBuffer[lineIndex] = '\0'; // Add standard C string terminator
+            
+            // Now you safely have a full string. Call your parser!
+            ParseGPS(lineBuffer); 
+            
+            // Reset the line builder for the next sentence
+            lineIndex = 0; 
+        }
+    }
+
+/* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
   }
