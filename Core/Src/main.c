@@ -1,20 +1,4 @@
 /* USER CODE BEGIN Header */
-/**
-  ******************************************************************************
-  * @file           : main.c
-  * @brief          : Main program body
-  ******************************************************************************
-  * @attention
-  *
-  * Copyright (c) 2026 STMicroelectronics.
-  * All rights reserved.
-  *
-  * This software is licensed under terms that can be found in the LICENSE file
-  * in the root directory of this software component.
-  * If no LICENSE file comes with this software, it is provided AS-IS.
-  *
-  ******************************************************************************
-  */
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
@@ -22,24 +6,19 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include <stdint.h>
-#include <stdbool.h>
-
+#include <stdio.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
-
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
@@ -58,29 +37,45 @@ I2C_HandleTypeDef hi2c3;
 SD_HandleTypeDef hsd1;
 
 UART_HandleTypeDef huart1;
+DMA_NodeTypeDef Node_GPDMA1_Channel0;
+DMA_QListTypeDef List_GPDMA1_Channel0;
+DMA_HandleTypeDef handle_GPDMA1_Channel0;
 
 /* USER CODE BEGIN PV */
+/* USER CODE BEGIN PV */
+#define RX_BUFFER_SIZE 256
 
+uint8_t rx_byte;                    // Current byte received
+uint8_t rx_buffer[RX_BUFFER_SIZE];  // Buffer to hold the NMEA sentence
+uint16_t rx_index = 0;              // Current position in the buffer
+volatile uint8_t sentence_ready = 0;// Flag set when a full sentence is received
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MPU_Config(void);
 static void MX_GPIO_Init(void);
+static void MX_GPDMA1_Init(void);
 static void MX_ETH_Init(void);
 static void MX_FDCAN1_Init(void);
 static void MX_I2C1_Init(void);
 static void MX_I2C3_Init(void);
 static void MX_ICACHE_Init(void);
-static void MX_SDMMC1_SD_Init(void);
 static void MX_USART1_UART_Init(void);
+static void MX_SDMMC1_SD_Init(void);
 /* USER CODE BEGIN PFP */
-
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-
+int _write(int file, char *ptr, int len) 
+{
+    for (int i = 0; i < len; i++) 
+    {
+        ITM_SendChar(*ptr++);
+    }
+    return len;
+}
 /* USER CODE END 0 */
 
 /**
@@ -91,7 +86,6 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
-
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -103,108 +97,61 @@ int main(void)
   HAL_Init();
 
   /* USER CODE BEGIN Init */
-
   /* USER CODE END Init */
 
   /* Configure the system clock */
   SystemClock_Config();
 
   /* USER CODE BEGIN SysInit */
-
   /* USER CODE END SysInit */
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_GPDMA1_Init();
   MX_ETH_Init();
   MX_FDCAN1_Init();
   MX_I2C1_Init();
   MX_I2C3_Init();
   MX_ICACHE_Init();
-  MX_SDMMC1_SD_Init();
   MX_USART1_UART_Init();
+  MX_SDMMC1_SD_Init();
   /* USER CODE BEGIN 2 */
-  // receive GPS data over UART 
-  uint8_t rxBuffer[512]; // Large enough to hold a few GPS sentences
-  char lineBuffer[120];          // Temporary buffer for a single complete sentence
-
-  uint16_t readIndex = 0;
-  uint16_t lineIndex = 0;
-
-  // Start receiving in the background
-  HAL_UART_Receive_DMA(&huart1, rxBuffer, sizeof(rxBuffer));
-
-
-  bool gpsValid = false;
-
+  HAL_UART_Receive_IT(&huart1, &rx_byte, 1);
   /* USER CODE END 2 */
 
-  /* Infinite loop */
+/* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  while (1)
-  {
+  uint32_t gps_led_timer = 0;
 
-    // check 
-    // 1. Calculate the exact index where the DMA is currently writing
-    // __HAL_DMA_GET_COUNTER returns how many bytes are LEFT to write in the buffer
-    uint16_t writeIndex = 512 - __HAL_DMA_GET_COUNTER(&hdma_usart1_rx);
-    
-    // 2. Loop only if there are new unread bytes
-    while (readIndex != writeIndex) {
-    
-      // Grab one new byte
-      char c = rxBuffer[readIndex];
-        
-      // Move our read pointer forward, wrapping back to 0 if we hit the end
-      readIndex++;
-      if (readIndex >= 512) {
-        readIndex = 0;
-      }
-    
-      // 3. Add the character to our temporary line buffer
-      if (lineIndex < sizeof(lineBuffer) - 1) {
-        lineBuffer[lineIndex++] = c;
-      }
-    
-      // 4. If we hit the newline, the sentence is complete!
-      if (c == '\n') {
-        lineBuffer[lineIndex] = '\0'; // Add standard C string terminator
-        
-        if (strncmp(lineBuffer, "$GPGGA", 6) == 0) {
-          int current_comma_count = 0;
-          char* p = lineBuffer;
-          while (*p != '\0') {
-            if (*p == ',') {
-              current_comma_count++;
-            }
+  // Disable printf buffering so text prints immediately
+  setvbuf(stdout, NULL, _IONBF, 0);
+  printf("System Initialized. Waiting for GPS data...\r\n");
 
-            if (current_comma_count == 6) {
-              if (*(p + 1) != '0') {
-                gpsValid = true;
-              } else {
-                gpsValid = false;
-              }
-              break; 
-            }
-            p++;
-          }
-
+  while (1) {
+      // 1. Check if a full NMEA sentence has arrived from the GPS
+      if (sentence_ready) {
           
-        }
-        
-        // Reset the line builder for the next sentence
-        lineIndex = 0; 
-      }
-    }
+          // Dump the received GPS sentence over ST-Link SWO
+          printf("GPS: %s", rx_buffer);
 
-    if (gpsValid) {
-      HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_SET);
-    } else {
-      HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_RESET);
-    }
+          // Turn the LED ON to indicate data was received
+          HAL_GPIO_WritePin(GPIOC, GPIO_PIN_7, GPIO_PIN_SET);
+          
+          // Record the timestamp so we know when to turn it off
+          gps_led_timer = HAL_GetTick(); 
+
+          // Reset the flag to allow processing of the next sentence
+          sentence_ready = 0;
+      }
+
+      // 2. Non-blocking LED Off: Turn the LED off after 50ms to create a quick "flash"
+      if (HAL_GetTick() - gps_led_timer >= 50) {
+          HAL_GPIO_WritePin(GPIOC, GPIO_PIN_7, GPIO_PIN_RESET);
+      }
+  }
   /* USER CODE END WHILE */
 
-  /* USER CODE BEGIN 3 */
-  }
+    /* USER CODE BEGIN 3 */
   /* USER CODE END 3 */
 }
 
@@ -277,13 +224,11 @@ static void MX_ETH_Init(void)
 {
 
   /* USER CODE BEGIN ETH_Init 0 */
-
   /* USER CODE END ETH_Init 0 */
 
    static uint8_t MACAddr[6];
 
   /* USER CODE BEGIN ETH_Init 1 */
-
   /* USER CODE END ETH_Init 1 */
   heth.Instance = ETH;
   MACAddr[0] = 0x00;
@@ -299,7 +244,6 @@ static void MX_ETH_Init(void)
   heth.Init.RxBuffLen = 1524;
 
   /* USER CODE BEGIN MACADDRESS */
-
   /* USER CODE END MACADDRESS */
 
   if (HAL_ETH_Init(&heth) != HAL_OK)
@@ -312,7 +256,6 @@ static void MX_ETH_Init(void)
   TxConfig.ChecksumCtrl = ETH_CHECKSUM_IPHDR_PAYLOAD_INSERT_PHDR_CALC;
   TxConfig.CRCPadCtrl = ETH_CRC_PAD_INSERT;
   /* USER CODE BEGIN ETH_Init 2 */
-
   /* USER CODE END ETH_Init 2 */
 
 }
@@ -326,11 +269,9 @@ static void MX_FDCAN1_Init(void)
 {
 
   /* USER CODE BEGIN FDCAN1_Init 0 */
-
   /* USER CODE END FDCAN1_Init 0 */
 
   /* USER CODE BEGIN FDCAN1_Init 1 */
-
   /* USER CODE END FDCAN1_Init 1 */
   hfdcan1.Instance = FDCAN1;
   hfdcan1.Init.ClockDivider = FDCAN_CLOCK_DIV1;
@@ -355,8 +296,32 @@ static void MX_FDCAN1_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN FDCAN1_Init 2 */
-
   /* USER CODE END FDCAN1_Init 2 */
+
+}
+
+/**
+  * @brief GPDMA1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_GPDMA1_Init(void)
+{
+
+  /* USER CODE BEGIN GPDMA1_Init 0 */
+  /* USER CODE END GPDMA1_Init 0 */
+
+  /* Peripheral clock enable */
+  __HAL_RCC_GPDMA1_CLK_ENABLE();
+
+  /* GPDMA1 interrupt Init */
+    HAL_NVIC_SetPriority(GPDMA1_Channel0_IRQn, 0, 0);
+    HAL_NVIC_EnableIRQ(GPDMA1_Channel0_IRQn);
+
+  /* USER CODE BEGIN GPDMA1_Init 1 */
+  /* USER CODE END GPDMA1_Init 1 */
+  /* USER CODE BEGIN GPDMA1_Init 2 */
+  /* USER CODE END GPDMA1_Init 2 */
 
 }
 
@@ -369,11 +334,9 @@ static void MX_I2C1_Init(void)
 {
 
   /* USER CODE BEGIN I2C1_Init 0 */
-
   /* USER CODE END I2C1_Init 0 */
 
   /* USER CODE BEGIN I2C1_Init 1 */
-
   /* USER CODE END I2C1_Init 1 */
   hi2c1.Instance = I2C1;
   hi2c1.Init.Timing = 0x00707CBB;
@@ -403,7 +366,6 @@ static void MX_I2C1_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN I2C1_Init 2 */
-
   /* USER CODE END I2C1_Init 2 */
 
 }
@@ -417,11 +379,9 @@ static void MX_I2C3_Init(void)
 {
 
   /* USER CODE BEGIN I2C3_Init 0 */
-
   /* USER CODE END I2C3_Init 0 */
 
   /* USER CODE BEGIN I2C3_Init 1 */
-
   /* USER CODE END I2C3_Init 1 */
   hi2c3.Instance = I2C3;
   hi2c3.Init.Timing = 0x00707CBB;
@@ -451,7 +411,6 @@ static void MX_I2C3_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN I2C3_Init 2 */
-
   /* USER CODE END I2C3_Init 2 */
 
 }
@@ -465,11 +424,9 @@ static void MX_ICACHE_Init(void)
 {
 
   /* USER CODE BEGIN ICACHE_Init 0 */
-
   /* USER CODE END ICACHE_Init 0 */
 
   /* USER CODE BEGIN ICACHE_Init 1 */
-
   /* USER CODE END ICACHE_Init 1 */
 
   /** Enable instruction cache in 1-way (direct mapped cache)
@@ -483,7 +440,6 @@ static void MX_ICACHE_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN ICACHE_Init 2 */
-
   /* USER CODE END ICACHE_Init 2 */
 
 }
@@ -497,11 +453,9 @@ static void MX_SDMMC1_SD_Init(void)
 {
 
   /* USER CODE BEGIN SDMMC1_Init 0 */
-
   /* USER CODE END SDMMC1_Init 0 */
 
   /* USER CODE BEGIN SDMMC1_Init 1 */
-
   /* USER CODE END SDMMC1_Init 1 */
   hsd1.Instance = SDMMC1;
   hsd1.Init.ClockEdge = SDMMC_CLOCK_EDGE_RISING;
@@ -514,7 +468,6 @@ static void MX_SDMMC1_SD_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN SDMMC1_Init 2 */
-
   /* USER CODE END SDMMC1_Init 2 */
 
 }
@@ -528,11 +481,9 @@ static void MX_USART1_UART_Init(void)
 {
 
   /* USER CODE BEGIN USART1_Init 0 */
-
   /* USER CODE END USART1_Init 0 */
 
   /* USER CODE BEGIN USART1_Init 1 */
-
   /* USER CODE END USART1_Init 1 */
   huart1.Instance = USART1;
   huart1.Init.BaudRate = 38400;
@@ -562,7 +513,6 @@ static void MX_USART1_UART_Init(void)
     Error_Handler();
   }
   /* USER CODE BEGIN USART1_Init 2 */
-
   /* USER CODE END USART1_Init 2 */
 
 }
@@ -576,7 +526,6 @@ static void MX_GPIO_Init(void)
 {
   GPIO_InitTypeDef GPIO_InitStruct = {0};
   /* USER CODE BEGIN MX_GPIO_Init_1 */
-
   /* USER CODE END MX_GPIO_Init_1 */
 
   /* GPIO Ports Clock Enable */
@@ -622,12 +571,29 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_Init(GPS_TIME_GPIO_Port, &GPIO_InitStruct);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
-
   /* USER CODE END MX_GPIO_Init_2 */
 }
 
 /* USER CODE BEGIN 4 */
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+    if (huart->Instance == USART1) {
+        // Store the received byte into the buffer
+        if (rx_index < RX_BUFFER_SIZE - 1) {
+            rx_buffer[rx_index++] = rx_byte;
+        }
 
+        // Check if the received byte is a newline (end of NMEA sentence)
+        if (rx_byte == '\n') {
+            rx_buffer[rx_index] = '\0'; // Null-terminate the string
+            sentence_ready = 1;         // Alert the main loop
+            rx_index = 0;               // Reset the index for the next sentence
+        }
+
+        // Re-arm the interrupt to catch the very next byte
+        HAL_UART_Receive_IT(&huart1, &rx_byte, 1);
+    }
+}
 /* USER CODE END 4 */
 
  /* MPU Configuration */
@@ -671,11 +637,6 @@ void MPU_Config(void)
 void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
-  /* User can add his own implementation to report the HAL error return state */
-  __disable_irq();
-  while (1)
-  {
-  }
   /* USER CODE END Error_Handler_Debug */
 }
 #ifdef USE_FULL_ASSERT
@@ -689,8 +650,6 @@ void Error_Handler(void)
 void assert_failed(uint8_t *file, uint32_t line)
 {
   /* USER CODE BEGIN 6 */
-  /* User can add his own implementation to report the file name and line number,
-     ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
   /* USER CODE END 6 */
 }
 #endif /* USE_FULL_ASSERT */
